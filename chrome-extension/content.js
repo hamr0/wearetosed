@@ -21,22 +21,23 @@
     var termsLinks = [];
     var seen = {};
 
-    var privacyRe = /privacy(\s*policy)?|data\s*policy|cookie\s*policy/i;
-    var termsRe = /terms\s*(of\s*)?(service|use)|acceptable\s*use|eula|legal\s*notice/i;
+    var privacyRe = /privacy(\s*(policy|notice|security))?|data\s*policy|cookie\s*policy|datenschutz|privacybeleid|politique\s*de\s*confidentialit/i;
+    var termsRe = /terms\s*(of\s*)?(service|use)|terms\s*(&|and)\s*conditions|acceptable\s*use|eula|legal\s*notice|nutzungsbedingungen|algemene\s*voorwaarden|conditions\s*d['']utilisation/i;
 
     var links = document.querySelectorAll("a[href]");
     for (var i = 0; i < links.length; i++) {
       var href = links[i].href;
       if (!href || href.startsWith("javascript:") || href.startsWith("#")) continue;
       var text = (links[i].textContent || "").trim();
-      if (text.length < 3 || text.length > 80) continue;
+      if (text.length > 80) continue;
 
       try {
         var url = new URL(href, location.origin);
         var key = url.origin + url.pathname;
         if (seen[key]) continue;
 
-        var combined = text + " " + url.pathname;
+        var titleAttr = links[i].getAttribute("title") || "";
+        var combined = text + " " + decodeURIComponent(url.pathname) + " " + titleAttr;
         if (privacyRe.test(combined)) {
           seen[key] = true;
           privacyLinks.push({ url: url.href, text: text });
@@ -47,6 +48,35 @@
       } catch (e) { /* skip */ }
     }
 
+    // Scan inline JS for policy URLs (sites like Shein embed paths in config)
+    if (privacyLinks.length === 0 || termsLinks.length === 0) {
+      var scripts = document.querySelectorAll("script:not([src])");
+      var privacyUrlRe = /['"](\/?[^'"]*privac[^'"]{0,60}\.html?)['"]/i;
+      var termsUrlRe = /['"](\/?[^'"]*terms[^'"]{0,60}\.html?)['"]/i;
+      for (var s = 0; s < scripts.length; s++) {
+        var src = scripts[s].textContent || "";
+        if (src.length > 200000) continue;
+        if (privacyLinks.length === 0) {
+          var pm = src.match(privacyUrlRe);
+          if (pm) {
+            try {
+              var pUrl = new URL(pm[1], location.origin).href;
+              privacyLinks.push({ url: pUrl, text: "privacy (from script)" });
+            } catch (e) { /* skip */ }
+          }
+        }
+        if (termsLinks.length === 0) {
+          var tm = src.match(termsUrlRe);
+          if (tm) {
+            try {
+              var tUrl = new URL(tm[1], location.origin).href;
+              termsLinks.push({ url: tUrl, text: "terms (from script)" });
+            } catch (e) { /* skip */ }
+          }
+        }
+      }
+    }
+
     return { privacy: privacyLinks, terms: termsLinks };
   }
 
@@ -55,6 +85,47 @@
     var target = document.querySelector("main, article, [role='main'], .content, #content, .policy, .legal");
     var el = target || document.body;
     return (el.innerText || "");
+  }
+
+  // --- Strip HTML to text ---
+  function htmlToText(html) {
+    return html
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&nbsp;/gi, " ")
+      .replace(/&amp;/gi, "&")
+      .replace(/&lt;/gi, "<")
+      .replace(/&gt;/gi, ">")
+      .replace(/&quot;/gi, '"')
+      .replace(/&#39;/gi, "'")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  // --- Fetch a URL from page context (has cookies/session) ---
+  function fetchAndScan(urls, index, callback) {
+    if (index >= urls.length) { callback(null); return; }
+
+    var url = urls[index].url;
+    console.log("[wearetosed] fetching:", url);
+
+    fetch(url, { credentials: "same-origin", redirect: "follow" })
+      .then(function (resp) {
+        if (!resp.ok) throw new Error("HTTP " + resp.status);
+        return resp.text();
+      })
+      .then(function (html) {
+        var text = htmlToText(html);
+        if (text.length < 200) throw new Error("Too short");
+        var result = scanText(text);
+        console.log("[wearetosed] fetched:", url, "score:", result.score);
+        callback(result);
+      })
+      .catch(function (err) {
+        console.log("[wearetosed] fetch failed:", url, err.message);
+        fetchAndScan(urls, index + 1, callback);
+      });
   }
 
   // --- Main ---
@@ -76,16 +147,67 @@
       total: result.total
     });
   } else {
-    // Find links and let background fetch
-    var found = findPolicyLinks();
+    // Check cache first via background
+    chrome.runtime.sendMessage({ type: "checkCache", domain: location.hostname }, function (cached) {
+      if (cached && cached.privacy && cached.terms) {
+        // Full cache — background will handle badge
+        return;
+      }
 
-    console.log("[wearetosed] found links — privacy:", found.privacy.length, "terms:", found.terms.length);
+      var found = findPolicyLinks();
+      var origin = location.origin;
 
-    chrome.runtime.sendMessage({
-      type: "policyLinks",
-      domain: location.hostname,
-      privacyLinks: found.privacy,
-      termsLinks: found.terms
+      // Add fallback paths
+      if (found.privacy.length === 0) {
+        found.privacy = [
+          { url: origin + "/privacy", text: "privacy" },
+          { url: origin + "/privacy-policy", text: "privacy-policy" },
+          { url: origin + "/privacypolicy", text: "privacypolicy" }
+        ];
+      }
+      if (found.terms.length === 0) {
+        found.terms = [
+          { url: origin + "/terms", text: "terms" },
+          { url: origin + "/terms-of-service", text: "terms-of-service" },
+          { url: origin + "/tos", text: "tos" }
+        ];
+      }
+
+      var needPrivacy = !cached || !cached.privacy;
+      var needTerms = !cached || !cached.terms;
+      var pending = 0;
+      var done = 0;
+      var privacyResult = cached ? cached.privacy : null;
+      var termsResult = cached ? cached.terms : null;
+
+      function finish() {
+        done++;
+        if (done < pending) return;
+        chrome.runtime.sendMessage({
+          type: "fetchedResults",
+          domain: location.hostname,
+          privacy: privacyResult,
+          terms: termsResult
+        });
+      }
+
+      if (needPrivacy) {
+        pending++;
+        fetchAndScan(found.privacy, 0, function (r) { privacyResult = r; finish(); });
+      }
+      if (needTerms) {
+        pending++;
+        fetchAndScan(found.terms, 0, function (r) { termsResult = r; finish(); });
+      }
+
+      if (pending === 0) {
+        chrome.runtime.sendMessage({
+          type: "fetchedResults",
+          domain: location.hostname,
+          privacy: privacyResult,
+          terms: termsResult
+        });
+      }
     });
   }
 })();
