@@ -2,14 +2,15 @@
 
 (function () {
   function getPageType() {
+    var host = location.hostname.toLowerCase();
     var path = location.pathname.toLowerCase();
     var title = (document.title || "").toLowerCase();
     var h1 = document.querySelector("h1");
     var h1Text = h1 ? h1.textContent.toLowerCase() : "";
-    var all = path + " " + title + " " + h1Text;
+    var all = host + " " + path + " " + title + " " + h1Text;
 
-    if (/privacy(\s*policy|\s*notice)?|data\s*policy|cookie\s*policy/.test(all)) return "privacy";
-    if (/terms\s*(of\s*)?(service|use)|acceptable\s*use|eula|end\s*user\s*license/.test(all)) return "terms";
+    if (/privacy(\s*policy|\s*notice|\s*center)?|data\s*policy|cookie\s*policy/.test(all)) return "privacy";
+    if (/terms[-\s]*(of[-\s]*)?(service|use)|terms[-\s]*((&|and)[-\s]*)?conditions|conditions[-\s]*(of[-\s]*)?use|acceptable[-\s]*use|eula|end[-\s]*user[-\s]*license|visitor[-\s]?agreement/.test(all)) return "terms";
     if (/\/(legal|gdpr|ccpa|data[-_]?processing)/.test(path)) return "privacy";
     return null;
   }
@@ -127,27 +128,57 @@
         callback(result);
       })
       .catch(function (err) {
-        console.log("[wearetosed] fetch failed:", url, err.message);
-        fetchAndScan(urls, index + 1, callback);
+        console.log("[wearetosed] content fetch failed:", url, err.message, "— trying background");
+        browser.runtime.sendMessage({ type: "bgFetch", url: url }).then(function (result) {
+          if (result && result.score !== undefined) {
+            console.log("[wearetosed] bg fetched:", url, "score:", result.score);
+            callback(result);
+          } else {
+            fetchAndScan(urls, index + 1, callback);
+          }
+        }).catch(function () {
+          fetchAndScan(urls, index + 1, callback);
+        });
       });
   }
 
   var pageType = getPageType();
+
+  function sendDirectScan(type, scanResult) {
+    browser.runtime.sendMessage({
+      type: "directScan",
+      domain: location.hostname,
+      pageType: type,
+      items: scanResult.items,
+      score: scanResult.score,
+      total: scanResult.total
+    });
+  }
 
   if (pageType) {
     var text = getPolicyText();
     var result = scanText(text);
 
     console.log("[wearetosed] direct scan (" + pageType + ") — score:", result.score, result.items);
+    sendDirectScan(pageType, result);
 
-    browser.runtime.sendMessage({
-      type: "directScan",
-      domain: location.hostname,
-      pageType: pageType,
-      items: result.items,
-      score: result.score,
-      total: result.total
-    });
+    // SPA retry — content may load after document_idle
+    if (result.total === 0) {
+      var retries = 0;
+      var observer = new MutationObserver(function () {
+        retries++;
+        if (retries > 50) { observer.disconnect(); return; }
+        var newText = getPolicyText();
+        var newResult = scanText(newText);
+        if (newResult.total > 0) {
+          observer.disconnect();
+          console.log("[wearetosed] SPA rescan (" + pageType + ") — score:", newResult.score);
+          sendDirectScan(pageType, newResult);
+        }
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+      setTimeout(function () { observer.disconnect(); }, 15000);
+    }
   } else {
     browser.runtime.sendMessage({ type: "checkCache", domain: location.hostname }).then(function (cached) {
       if (cached && cached.privacy && cached.terms) return;
@@ -155,19 +186,22 @@
       var found = findPolicyLinks();
       var origin = location.origin;
 
-      if (found.privacy.length === 0) {
-        found.privacy = [
-          { url: origin + "/privacy", text: "privacy" },
-          { url: origin + "/privacy-policy", text: "privacy-policy" },
-          { url: origin + "/privacypolicy", text: "privacypolicy" }
-        ];
+      // Always append same-origin fallbacks (handles external SPA failures like wbdprivacy.com)
+      var privacyFallbacks = [
+        origin + "/privacy", origin + "/privacy-policy", origin + "/privacypolicy", origin + "/privacy.html"
+      ];
+      var termsFallbacks = [
+        origin + "/terms", origin + "/terms-of-service", origin + "/tos", origin + "/terms.html"
+      ];
+      var existingPrivacy = {};
+      for (var ep = 0; ep < found.privacy.length; ep++) existingPrivacy[found.privacy[ep].url] = true;
+      for (var fp = 0; fp < privacyFallbacks.length; fp++) {
+        if (!existingPrivacy[privacyFallbacks[fp]]) found.privacy.push({ url: privacyFallbacks[fp], text: "fallback" });
       }
-      if (found.terms.length === 0) {
-        found.terms = [
-          { url: origin + "/terms", text: "terms" },
-          { url: origin + "/terms-of-service", text: "terms-of-service" },
-          { url: origin + "/tos", text: "tos" }
-        ];
+      var existingTerms = {};
+      for (var et = 0; et < found.terms.length; et++) existingTerms[found.terms[et].url] = true;
+      for (var ft = 0; ft < termsFallbacks.length; ft++) {
+        if (!existingTerms[termsFallbacks[ft]]) found.terms.push({ url: termsFallbacks[ft], text: "fallback" });
       }
 
       var needPrivacy = !cached || !cached.privacy;
@@ -207,4 +241,34 @@
       }
     });
   }
+
+  // SPA navigation detection — overlays/pushState (Etsy pattern)
+  var lastHref = location.href;
+  setInterval(function () {
+    if (location.href === lastHref) return;
+    lastHref = location.href;
+    var newType = getPageType();
+    if (!newType) return;
+    setTimeout(function () {
+      var text = getPolicyText();
+      var spaResult = scanText(text);
+      console.log("[wearetosed] SPA nav (" + newType + ") — score:", spaResult.score);
+      sendDirectScan(newType, spaResult);
+      if (spaResult.total === 0) {
+        var spaRetries = 0;
+        var spaObs = new MutationObserver(function () {
+          spaRetries++;
+          if (spaRetries > 50) { spaObs.disconnect(); return; }
+          var t = getPolicyText();
+          var r = scanText(t);
+          if (r.total > 0) {
+            spaObs.disconnect();
+            sendDirectScan(newType, r);
+          }
+        });
+        spaObs.observe(document.body, { childList: true, subtree: true });
+        setTimeout(function () { spaObs.disconnect(); }, 15000);
+      }
+    }, 1500);
+  }, 1000);
 })();

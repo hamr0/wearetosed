@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "description": "Score any privacy policy or terms of service for red flags — data selling, rights waivers, surveillance, and more.",
   "permissions": ["storage"],
+  "host_permissions": ["<all_urls>"],
   "action": {
     "default_title": "wearetosed",
     "default_popup": "popup.html"

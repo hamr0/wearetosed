@@ -76,6 +76,46 @@ chrome.runtime.onMessage.addListener(function (message, sender, sendResponse) {
     return;
   }
 
+  // Background fetch for cross-origin URLs (Google etc.)
+  if (message.type === "bgFetch") {
+    var url = message.url;
+    fetch(url, { redirect: "follow" })
+      .then(function (resp) {
+        if (!resp.ok) throw new Error("HTTP " + resp.status);
+        return resp.text();
+      })
+      .then(function (html) {
+        // Follow meta refresh redirects (Google pattern)
+        var metaRedirect = html.match(/content=["'][^"']*URL=([^"'\s>]+)/i);
+        if (metaRedirect && html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().length < 500) {
+          return fetch(metaRedirect[1], { redirect: "follow" })
+            .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.text(); });
+        }
+        return html;
+      })
+      .then(function (html) {
+        var text = html
+          .replace(/<script[\s\S]*?<\/script>/gi, " ")
+          .replace(/<style[\s\S]*?<\/style>/gi, " ")
+          .replace(/<[^>]+>/g, " ")
+          .replace(/&nbsp;/gi, " ")
+          .replace(/&amp;/gi, "&")
+          .replace(/&lt;/gi, "<")
+          .replace(/&gt;/gi, ">")
+          .replace(/&quot;/gi, '"')
+          .replace(/&#39;/gi, "'")
+          .replace(/\s+/g, " ")
+          .trim();
+        if (text.length < 200) throw new Error("Too short");
+        var result = scanText(text);
+        sendResponse(result);
+      })
+      .catch(function () {
+        sendResponse(null);
+      });
+    return true;
+  }
+
   // Content script checking cache before fetching
   if (message.type === "checkCache") {
     chrome.storage.local.get(cacheKey(domain), function (cached) {

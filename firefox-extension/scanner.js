@@ -112,6 +112,7 @@ function scanText(text) {
     }
   }
 
-  var score = Math.min(100, patternCount * 20);
+  // Score based on breadth (categories hit) + depth (total unique matches)
+  var score = Math.min(100, patternCount * 8 + total * 2);
   return { items: items, score: score, total: total };
 }

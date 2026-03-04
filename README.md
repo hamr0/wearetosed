@@ -1,6 +1,6 @@
 # wearetosed
 
-> ToS toxicity scorecard — know what you're agreeing to.
+> Score any terms of service — know what you're agreeing to.
 
 **Every "I agree" is a blind handshake.** Privacy policies and terms of service are designed to be unread. They bury data selling behind "trusted partners", strip your right to sue behind "binding arbitration", and reserve the right to change everything "without notice".
 
@@ -30,7 +30,7 @@ Part of the **weare____** privacy tool series.
 
 ## How scoring works
 
-Each red flag category detected adds 20 points. Maximum score is 100.
+Score = (categories detected × 8) + (total unique matches × 2), capped at 100. More categories and more matches within each category both increase the score.
 
 | Score | Badge | Meaning |
 |---|---|---|
@@ -41,11 +41,11 @@ Each red flag category detected adds 20 points. Maximum score is 100.
 
 ## How it works
 
-1. **content.js** checks if the current page is a policy/terms page (URL pattern + title/h1 heuristics)
-2. If yes, extracts the main text content and runs 6 regex-based scanners
-3. Results are sent to **background.js** which stores them per tab and updates the badge
-4. **popup.js** renders the toxicity score and breakdown by section
-5. Non-policy pages show "Not a privacy policy or terms page"
+1. **On any page**: finds privacy/terms links in the DOM, fetches them, and scans the text
+2. **On a policy page**: detects it via URL, hostname, title, and h1 heuristics — scans the rendered content directly
+3. **SPA support**: MutationObserver re-scans when content loads after initial render; detects pushState/overlay navigations (Etsy, etc.)
+4. **Cross-origin fallback**: if content script fetch fails (CORS), routes through background script
+5. **Caching**: results cached per domain so repeat visits are instant
 
 All processing is local. No data leaves your browser.
 
@@ -62,30 +62,15 @@ All processing is local. No data leaves your browser.
 2. Open `about:debugging#/runtime/this-firefox`
 3. Click **Load Temporary Add-on** → select any file inside the `firefox-extension/` folder
 
-Navigate to any site's privacy policy or terms of service page — the badge shows the toxicity score.
-
-## Testing checklist
-
-- [ ] Load extension, visit google.com/policies/privacy — expect high score
-- [ ] Visit facebook.com/privacy/policy — expect high score
-- [ ] Visit a small indie site's /privacy — expect lower score
-- [ ] Visit a non-policy page (e.g. wikipedia.org) — expect "Not a policy page" message
-- [ ] Click badge → popup shows score, verdict, and red flag breakdown
+Visit any site — wearetosed auto-fetches its privacy policy and terms. Or navigate directly to a site's policy page for a guaranteed scan.
 
 ## Project structure
 
 ```
-chrome-extension/
-  manifest.json       # Chrome MV3 manifest
-  content.js          # Policy detection + 6 red flag scanners
-  background.js       # chrome.storage.session + badge scoring
-  popup.html/js/css   # Toxicity score + breakdown rendering
-  icon48/128.png      # Extension icons (placeholder)
-firefox-extension/
-  manifest.json       # Firefox MV2 manifest
-  content.js          # Same scanners, browser.runtime API
-  background.js       # In-memory tabData + browser.browserAction badge
-  popup.html/js/css   # Same UI, promise-based messaging
-  icon48/128.png      # Extension icons (placeholder)
-store-assets/
+chrome-extension/     # Chrome MV3
+firefox-extension/    # Firefox MV2
+  scanner.js          # Shared regex scanner (6 categories)
+  content.js          # Page detection, link discovery, fetch + SPA handling
+  background.js       # Caching, badge, cross-origin fetch fallback
+  popup.html/js/css   # Score + breakdown UI
 ```

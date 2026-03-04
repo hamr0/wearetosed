@@ -112,6 +112,8 @@ function scanText(text) {
     }
   }
 
-  var score = Math.min(100, patternCount * 20);
+  // Score based on breadth (categories hit) + depth (total unique matches)
+  // Gives range: 3 hits/2 cats=22, 8 hits/4 cats=48, 13 hits/6 cats=74, 25 hits/6 cats=98
+  var score = Math.min(100, patternCount * 8 + total * 2);
   return { items: items, score: score, total: total };
 }
