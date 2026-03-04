@@ -115,11 +115,34 @@ h1 {
   color: #e74c3c;
 }
 
-/* Breakdown */
-.breakdown-section {
-  margin-bottom: 14px;
+/* Document sections (Privacy Policy / Terms of Service) */
+.doc-section {
+  margin-bottom: 16px;
 }
 
+.doc-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 10px;
+  background: #1e1e3a;
+  border-radius: 6px;
+  margin-bottom: 8px;
+}
+
+.doc-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #e0e0e0;
+}
+
+.doc-score {
+  font-size: 13px;
+  font-weight: 600;
+  color: #e07a3a;
+}
+
+/* Breakdown */
 .breakdown-heading {
   font-size: 11px;
   font-weight: 700;
@@ -127,6 +150,7 @@ h1 {
   letter-spacing: 0.5px;
   text-transform: uppercase;
   margin-bottom: 6px;
+  margin-top: 8px;
   padding-bottom: 4px;
   border-bottom: 1px solid #2a2a4a;
 }
@@ -168,12 +192,6 @@ h1 {
   font-size: 28px;
   color: #4caf50;
   margin-bottom: 8px;
-}
-
-.empty-hint {
-  font-size: 11px;
-  color: #555;
-  margin-top: 6px;
 }
 
 .hidden {

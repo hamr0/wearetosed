@@ -26,22 +26,37 @@ function render(data) {
   var verdictEl = document.getElementById("verdict");
   var breakdownEl = document.getElementById("breakdown");
   var emptyEl = document.getElementById("empty");
-  var notPolicyEl = document.getElementById("not-policy");
+  var notFoundEl = document.getElementById("not-found");
 
-  if (!data || !data.isPolicyPage) {
-    notPolicyEl.classList.remove("hidden");
+  if (!data || !data.hasData) {
+    notFoundEl.classList.remove("hidden");
     return;
   }
 
-  if (data.score === 0) {
-    verdictEl.appendChild(buildVerdict(stripDomain(data.domain), 0));
+  var domain = stripDomain(data.domain);
+  verdictEl.appendChild(buildVerdict(domain, data.score));
+
+  var hasBreakdown = false;
+
+  // Privacy Policy section
+  if (data.privacy && data.privacy.score > 0) {
+    hasBreakdown = true;
+    var privacyBlock = buildDocSection("Privacy Policy", data.privacy);
+    breakdownEl.appendChild(privacyBlock);
+  }
+
+  // Terms of Service section
+  if (data.terms && data.terms.score > 0) {
+    hasBreakdown = true;
+    var termsBlock = buildDocSection("Terms of Service", data.terms);
+    breakdownEl.appendChild(termsBlock);
+  }
+
+  if (hasBreakdown) {
+    breakdownEl.classList.remove("hidden");
+  } else {
     emptyEl.classList.remove("hidden");
-    return;
   }
-
-  verdictEl.appendChild(buildVerdict(stripDomain(data.domain), data.score));
-  buildBreakdown(breakdownEl, data.items);
-  breakdownEl.classList.remove("hidden");
 }
 
 function stripDomain(hostname) {
@@ -90,10 +105,23 @@ function buildVerdict(domain, score) {
   return wrap;
 }
 
-function buildBreakdown(container, items) {
+function buildDocSection(title, docResult) {
+  var wrap = el("div", "doc-section");
+
+  // Document header with score
+  var header = el("div", "doc-header");
+  var headerTitle = el("span", "doc-title");
+  headerTitle.textContent = title;
+  header.appendChild(headerTitle);
+  var headerScore = el("span", "doc-score");
+  headerScore.textContent = docResult.score + "/100";
+  header.appendChild(headerScore);
+  wrap.appendChild(header);
+
+  // Build sub-sections
   var itemMap = {};
-  for (var i = 0; i < items.length; i++) {
-    itemMap[items[i].pattern] = items[i].count;
+  for (var i = 0; i < docResult.items.length; i++) {
+    itemMap[docResult.items[i].pattern] = docResult.items[i].count;
   }
 
   for (var s = 0; s < SECTION_ORDER.length; s++) {
@@ -106,11 +134,9 @@ function buildBreakdown(container, items) {
     }
     if (!hasAny) continue;
 
-    var section = el("div", "breakdown-section");
-
     var heading = el("div", "breakdown-heading");
     heading.textContent = sectionName;
-    section.appendChild(heading);
+    wrap.appendChild(heading);
 
     for (var j = 0; j < patterns.length; j++) {
       var pattern = patterns[j];
@@ -127,11 +153,11 @@ function buildBreakdown(container, items) {
       countEl.textContent = count;
       row.appendChild(countEl);
 
-      section.appendChild(row);
+      wrap.appendChild(row);
     }
-
-    container.appendChild(section);
   }
+
+  return wrap;
 }
 
 function el(tag, className) {
