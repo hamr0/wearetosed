@@ -20,7 +20,7 @@
     var seen = {};
 
     var privacyRe = /privacy(\s*(policy|notice|security))?|data\s*policy|cookie\s*policy|datenschutz|privacybeleid|politique\s*de\s*confidentialit/i;
-    var termsRe = /terms\s*(of\s*)?(service|use)|terms\s*(&|and)\s*conditions|acceptable\s*use|eula|legal\s*notice|nutzungsbedingungen|algemene\s*voorwaarden|conditions\s*d['']utilisation/i;
+    var termsRe = /terms\s*(of\s*)?(service|use)|terms\s*(&|and)\s*conditions|conditions\s*(of\s*)?use|acceptable\s*use|eula|legal\s*notice|nutzungsbedingungen|algemene\s*voorwaarden|conditions\s*d['']utilisation|gebruiksvoorwaarden/i;
 
     var links = document.querySelectorAll("a[href]");
     for (var i = 0; i < links.length; i++) {
@@ -104,10 +104,20 @@
     var url = urls[index].url;
     console.log("[wearetosed] fetching:", url);
 
-    fetch(url, { credentials: "same-origin", redirect: "follow" })
+    fetch(url, { credentials: "include", redirect: "follow" })
       .then(function (resp) {
         if (!resp.ok) throw new Error("HTTP " + resp.status);
         return resp.text();
+      })
+      .then(function (html) {
+        // Follow meta refresh redirects (Google pattern)
+        var metaRedirect = html.match(/content=["'][^"']*URL=([^"'\s>]+)/i);
+        if (metaRedirect && htmlToText(html).length < 500) {
+          console.log("[wearetosed] following meta redirect:", metaRedirect[1]);
+          return fetch(metaRedirect[1], { credentials: "include", redirect: "follow" })
+            .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.text(); });
+        }
+        return html;
       })
       .then(function (html) {
         var text = htmlToText(html);
