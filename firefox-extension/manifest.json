@@ -1,0 +1,34 @@
+{
+  "manifest_version": 2,
+  "name": "wearetosed",
+  "version": "0.1.0",
+  "description": "Score any privacy policy or terms of service for red flags — data selling, rights waivers, surveillance, and more.",
+  "permissions": ["<all_urls>"],
+  "browser_action": {
+    "default_title": "wearetosed",
+    "default_popup": "popup.html"
+  },
+  "background": {
+    "scripts": ["background.js"]
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "48": "icon48.png",
+    "128": "icon128.png"
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "wearetosed@extension",
+      "strict_min_version": "142.0",
+      "data_collection_permissions": {
+        "required": ["none"]
+      }
+    }
+  }
+}
