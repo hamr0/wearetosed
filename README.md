@@ -6,6 +6,8 @@ Every "I agree" is a blind handshake. Privacy policies and terms of service are 
 
 No AI, no cloud lookups — just regex pattern matching. All processing is local.
 
+![wearetosed popup](store-assets/tosed.png)
+
 ## What it detects
 - **Data sharing & selling** — "share with third parties", "sell your data", "transfer to partners"
 - **Tracking & profiling** — "track across websites", "build a profile", "collect browsing history"
