@@ -28,7 +28,7 @@
     var links = document.querySelectorAll("a[href]");
     for (var i = 0; i < links.length; i++) {
       var href = links[i].href;
-      if (!href || href.startsWith("javascript:") || href.startsWith("#")) continue;
+      if (!href || href.startsWith("javascript:") || href.startsWith("#") || href.startsWith("mailto:") || href.startsWith("tel:")) continue;
       var text = (links[i].textContent || "").trim();
       if (text.length > 80) continue;
 
