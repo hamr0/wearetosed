@@ -49,20 +49,23 @@ Score = (categories detected × 8) + (total unique matches × 2), capped at 100.
 
 All processing is local. No data leaves your browser.
 
-## Install
+## Try It Now
+
+Store approval pending — install locally in under a minute:
 
 ### Chrome
-1. Clone or download this repo
-2. Open `chrome://extensions/`
-3. Enable **Developer mode**
-4. Click **Load unpacked** → select the `chrome-extension/` folder
+1. Download this repo (Code → Download ZIP) and unzip
+2. Go to `chrome://extensions` and turn on **Developer mode** (top right)
+3. Click **Load unpacked** → select the `chrome-extension` folder
+4. That's it — browse any site and click the extension icon
 
 ### Firefox
-1. Clone or download this repo
-2. Open `about:debugging#/runtime/this-firefox`
-3. Click **Load Temporary Add-on** → select any file inside the `firefox-extension/` folder
+1. Download this repo (Code → Download ZIP) and unzip
+2. Go to `about:debugging#/runtime/this-firefox`
+3. Click **Load Temporary Add-on** → pick any file in the `firefox-extension` folder
+4. That's it — browse any site and click the extension icon
 
-Visit any site — wearetosed auto-fetches its privacy policy and terms. Or navigate directly to a site's policy page for a guaranteed scan.
+> Firefox temporary add-ons reset when you close the browser — just re-load next session.
 
 ## Project structure
 
